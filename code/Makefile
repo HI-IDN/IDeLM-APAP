@@ -13,10 +13,13 @@ LAST_WEEKLY_JSON = $(lastword $(WEEKLY_JSON_ALL))
 WEEKLY_JSON = $(filter-out $(FIRST_WEEKLY_JSON) $(LAST_WEEKLY_JSON),$(WEEKLY_JSON_ALL))
 UNASSIGNED_JSON = $(notdir $(filter-out %_ILLEGAL.json, $(wildcard $(WEEKLY_UNASSIGNED_DATA)/*.json)))
 DB_FILE = $(WEEKLY_ASSIGNED_DATA)/database.sqlite
+RESULTS=../data/results
+DOCS=../docs
+DOCS_DB=$(DOCS)/data/apap.sqlite
 
 # Convert .xls to .json
 $(QUARTERLY_DATA)/%.json: $(QUARTERLY_DATA)/%.xls data/xls_to_json_converter.py ../data/staff.csv
-	python3 data/xls_to_json_converter.py $< -o $@ --simple
+	python3 data/xls_to_json_converter.py $< -o $@
 
 # Split quarterly .json into weekly segments
 $(WEEKLY_CALL_DATA): data/quarterly_json_week_splitter.py $(QUARTER_JSON) data/quarterly_json_week_splitter.py
@@ -49,6 +52,14 @@ import:
 	@echo "Importing JSON files from $(WEEKLY_ASSIGNED_DATA) into $(DB_FILE):"
 	python3 import_json_to_sqlite.py "$(DB_FILE)" $(WEEKLY_ASSIGNED_DATA)
 	cp $(DB_FILE) /mnt/c/Users/hbi3/Downloads/$(notdir $(DB_FILE))
+
+# Build the compact document database from the exported result tables.
+$(DOCS_DB): data/build_docs_db.py $(wildcard $(RESULTS)/*.csv)
+	python3 -m data.build_docs_db
+
+.PHONY: docs
+docs: $(DOCS_DB)
+	quarto render $(DOCS)/index.qmd
 
 clean:
 	@echo Removing quarterly JSON files

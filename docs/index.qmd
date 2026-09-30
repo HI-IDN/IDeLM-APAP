@@ -1,0 +1,528 @@
+---
+title: "Who Goes Home First? Fair Peel-Off Orders for Anaesthetists"
+subtitle: "The Anesthetist's Peel Assignment Problem (APAP). Working draft"
+author: "Helga Ingimundardóttir & Tómas Philip Rúnarsson"
+date: today
+abstract: |
+  In a hospital anaesthesia department, the working day does not end at a fixed time. Each
+  consultant may leave once the operating rooms they cover have closed, and since case durations
+  are uncertain, the department agrees each morning on a *peel-off order*: who is released first,
+  second, and so on. Late positions mean long days, so the order has to be shared out fairly. We
+  formulate this as the Anesthetist's Peel Assignment Problem (APAP), a weekly mixed-integer
+  program that assigns peel-off positions to the consultants without a fixed shift. The
+  consultants' points per day worked are kept close to a common target, and the cardiac and
+  in-charge roles are spread evenly. We apply the model retrospectively to 285 weeks of real call
+  schedules (July 2018 to December 2023, 25 consultants) and report how evenly the resulting
+  peel-off burden is shared. Individual weeks are closely balanced, but because each week is
+  solved on its own, small persistent differences between consultants are not compensated over
+  the long run: fair weeks do not by themselves give long-run fairness.
+execute:
+  echo: false
+---
+
+```{r}
+#| label: setup
+source("_setup.R")
+```
+
+::: {.callout-note}
+## Draft status
+
+This is a working draft. Items marked **TODO** need input before submission. Doctors are
+identified by their initials, as in the schedules they provided for research. **TODO:** replace
+them with pseudonymous codes before publication (`python -m data.apap_export --pseudonymise`).
+:::
+
+# Introduction {#sec-intro}
+
+Most shift work has a fixed end. Anaesthesia does not. An anaesthetist's day starts before 7 am
+and ends when the last operation in their rooms is finished, and that time is not known in
+advance: cases overrun, are added, or are cancelled. In a large department many consultants work
+in parallel, and as the afternoon goes on, rooms close one by one and the consultants covering
+them are no longer needed.
+
+Someone still has to decide who leaves. If consultants were simply released as their own rooms
+closed, the length of each person's day would depend on their room allocation, which is set for
+clinical reasons and not for fairness. Instead, the department studied here agrees on a
+**peel-off order** each day. The first person on the list is released first, the next person
+covers any remaining work, and so on down the list. The last people on the list stay until the
+end of the day. We use the department's term *peel-off order* for what the anaesthesia literature
+generally calls the order of *end-of-shift relief*.
+
+A good position one day and a bad one the next is normal; nobody expects a single day to be fair.
+The question is whether the order is fair **over time**. Before this project, the order was set
+by hand, and the consultants had no clear view of how their positions added up. This paper
+describes a mathematical model, the *Anesthetist's Peel Assignment Problem* (APAP), that sets the
+order so that each consultant's burden per day worked is kept close to a common target.
+
+The work was done in the autumn of 2023, when the department provided its historical call
+schedules for research, and was written up as a working paper. It was then put on hold while we
+waited for more reliable data from the hospital's records on when the consultants actually left
+work. Those data never became available. This draft picks the work up again with the data at
+hand: the call schedules, and the model's peel-off orders for them.
+
+The paper makes three contributions:
+
+1. It formulates end-of-day relief as a *repeated ordinal allocation problem*: each day the
+   consultants receive distinct positions in an order of release, and fairness is assessed
+   across repeated allocations and not within a single day (@sec-problem).
+2. It gives a weekly mixed-integer programming (MIP) formulation that assigns the complete
+   peel-off order, balancing points per day worked while respecting fixed shifts, requests and
+   clinical roles (@sec-model).
+3. It applies the model retrospectively to 5½ years of real call schedules and examines whether
+   fairness within individual weeks carries over to fairness over longer horizons (@sec-data,
+   @sec-results).
+
+**Related work.** Personnel rostering is well studied in healthcare, including nurse and
+physician scheduling [@ernst2004staff; @burke2004nurse; @erhard2018physician]. These models
+decide who works which shift, duty or workstation. Anaesthesia adds uncertain surgery durations
+and an uncertain end of day, and optimisation models have covered duty and workstation rosters
+with preferences and fairness [@fugener2015duty], the joint assignment of anaesthetists and
+operating rooms [@rath2017integrated; @tsang2025stochastic], and equitable workload under
+uncertain demand [@sun2023equitable].
+
+A smaller literature deals directly with end-of-shift relief. @wax2017relief built a decision
+support system that gives priority for relief to anaesthetists who have recently worked later
+than others, and @bhutiani2018relief used a prioritised relief list to make the relief of
+residents more equitable. @dexter2021variability studied the variability in work hours among
+anaesthetists who are not on call, and @dexter2022relief showed that relief decisions based on
+equity can lower the group's productivity in the late afternoon. These studies establish the
+order of relief as an equity problem in anaesthesia.
+
+The closest optimisation work keeps the relief order separate from the operational problem that
+follows it. @bansal2026relief schedule anaesthetists to operating rooms under uncertain surgery
+durations, deciding relief times and cover, and take the relief order as an input. APAP
+addresses the question that comes before: how should that order itself be chosen? It does not
+apply a history-based priority rule one relief at a time. It assigns the complete daily order,
+jointly over a week, while accounting for the fixed call-related positions, requests, days
+worked and clinical roles.
+
+APAP sits at the intersection of two strands of work. Equity theory asks how indivisible,
+unequal burdens should be distributed among people with different claims [@young1994equity],
+and how fairness trades off against efficiency [@bertsimas2011price]. Repeated-scheduling work
+asks how fairness should be assessed across a sequence of periods [@ajtai1998fairness;
+@gross2019satisfaction; @hermelin2025fairness]. APAP brings these questions together as a
+repeated ordinal allocation problem: a single day cannot give everyone an early position, but
+advantages and burdens can be balanced across repeated allocations. Our results also show why
+the time horizon matters: weeks that are each fair need not add up to long-run equity when past
+burden is not carried from one planning period to the next (@sec-discussion).
+
+# Problem setting {#sec-problem}
+
+## The department
+
+The group is a paediatric anaesthesia department in North America with 22–25 consultants. They
+work across three sites:
+
+* an **outpatient surgical clinic**, open during the day only, for minor surgery;
+* a **specialty hospital** with 24/7 cover for orthopaedics, rehabilitation, neurosurgery and
+  plastic surgery, staffed by 3–4 anaesthetists, one of whom stays overnight;
+* the **main children's hospital**, the largest site, which needs 11–13 anaesthetists on an
+  average day. Two are always on call there: the *call* anaesthetist stays overnight and the
+  *late-call* anaesthetist works into the evening.
+
+About half of the consultants are qualified for **cardiac** anaesthesia, and one of them is always
+in either the call or the late-call role. One consultant is the **charge** doctor, who manages the
+operating rooms for the day and usually works long hours. Consultants who are not working on a
+given day are on leave or have administrative time.
+
+## Peel-off positions and points
+
+Each working day, every consultant in the order gets a position $k = 1, 2, \dots$, where $k = 1$
+is released first. The position is also the consultant's **points** for the day: a high number
+means a long day. Many positions follow directly from the call schedule:
+
+| Shift | Meaning | Position |
+|---|---|---|
+| PostCall | worked overnight the night before | first (1) |
+| PostHoliday | worked on a holiday the day before | 1–2 |
+| PostLate | was late-call the day before | 1–3 |
+| PreCall | is on call the next day | 2–4 |
+| *Unassigned* | no fixed constraint: set by the model | middle positions |
+| OnLate | late-call today | second to last |
+| OnCall | on call today | last |
+
+: Shift types and their position in the peel-off order. {#tbl-shifts}
+
+@fig-shift-points shows the positions observed for each shift type. On a typical weekday there
+are `r median(per_day$in_order)` consultants in the order, and `r median(per_day$pool)` of them
+are unassigned. Choosing an order for those consultants is the actual decision. Days with
+administrative duties count as a fixed number of points (8), so that such days are not treated
+as free.
+
+```{r}
+#| label: fig-shift-points
+#| fig-cap: "Peel-off positions held on weekdays, by shift type. Fixed shifts take the first and last positions; the unassigned pool fills the middle."
+#| fig-height: 3.2
+plot_shift_points(apap$assignments)
+```
+
+## What fairness means here {#sec-fairness}
+
+@young1994equity defines an *allocation problem* as one in which "a bundle of resources,
+burdens, or costs is temporarily held in common by a group and must be allotted to them
+individually". The peel-off order is such a problem. The burden is the end of the working day:
+someone has to stay until the last room closes, and the group has to decide who.
+
+**The good is indivisible.** A position cannot be split: exactly one consultant is released
+first, and exactly one stays last. Young describes two common ways of making indivisible goods
+fair. One is *rotation*, where claimants take turns, so that fairness holds over a sequence of
+allocations and not within each one. The other is a *point system* that ranks claimants by
+their accumulated claim, like the points used to order early discharge from the US Army after
+1945 or to allocate kidneys. APAP combines the two: each position carries points, and the
+positions rotate so that points even out over the week.
+
+**The good is ordinal.** The daily decision is not the allocation of one scarce resource. It is
+the allocation of an ordered set of outcomes, $1 \prec 2 \prec \dots \prec n$, where every
+consultant in the order receives exactly one rank. This is what separates APAP from shift
+assignment and from ordinary priority scheduling, and it is why we describe it as a *repeated
+ordinal allocation problem*. The points turn the ordinal outcomes into an additive measure of
+burden that can be balanced over time.
+
+**Claims differ.** Consultants work different numbers of days: some work part-time, some joined
+or left during the period, and leave differs from person to person. Equal total points would
+therefore not be fair. Following Aristotle's proportionality principle, the burden should be
+proportional to the contribution, here the number of days worked. Fairness is therefore measured
+as **points per day worked**, and the aim is to keep this ratio close to a common target $c$ for
+everyone.
+
+**Apportionment.** There is a useful analogy with the classical apportionment problem of dividing
+parliamentary seats among states in proportion to population [@young1994equity]. A consultant's
+days worked play the role of population, and the target $c$ plays the role of the divisor. The
+principle behind Webster's and Hill's methods, that representation *per capita* should be as near
+uniform as possible, becomes the principle that points *per day worked* should be as near uniform
+as possible. The analogy is not exact: seats are interchangeable, whereas peel-off positions are
+ordered, and a complete order has to be assigned each day. Two further criteria from
+apportionment carry over:
+
+* *Impartiality*: consultants who look the same should be treated the same. In particular,
+  being qualified for the cardiac or charge role should not in itself change a consultant's
+  points per day worked.
+* *Unbiasedness*: over many allocations, the difference between each claimant's average
+  allotment and their quota should be close to zero. For APAP this is the long-run question:
+  do small weekly differences cancel out over months and years, or do they accumulate?
+
+Envy-freeness, where no one prefers another's allocation, is not a useful criterion for a single
+day. If earlier release is preferred, every consultant with a later position would prefer an
+earlier one, and only one consultant can hold each position. The relevant question is therefore
+not whether one day's order is envy-free, but whether advantages and burdens are balanced across
+repeated allocations, which again points to rotation and long-run balance.
+
+@tbl-design answers the design questions that @young1994equity poses for any equity rule.
+
+| Design question | APAP |
+|---|---|
+| What form does the allocation take? | A daily order of release; each position is indivisible |
+| Who is eligible? | Consultants working that day without a fixed call-related position |
+| What counts? | Peel-off position as points; administrative days count as 8 points |
+| Which principle? | Proportionality: equal points per day worked |
+| Which precedents? | Fixed positions after call, before call and on call (@tbl-shifts) |
+| How are competing criteria reconciled? | Weighted objective: equity first, then role spread, then charge from the call team |
+| What incentives does the rule create? | **TODO:** e.g. requests for particular positions, or for administrative days |
+
+: The design questions of @young1994equity, answered for APAP. {#tbl-design}
+
+# Data {#sec-data}
+
+## Source
+
+The data are the department's quarterly call schedules from July 2018 to December 2023, exported
+from the scheduling system as spreadsheets. For each day they give who is on call, who is
+late-call, who is at which site, who is on leave and who has administrative time. A data
+pipeline (see the appendix) converts them to weekly instances:
+
+1. quarterly spreadsheets are converted to a structured format and split into weeks (Monday to
+   Sunday);
+2. the fixed shifts of @tbl-shifts are derived from each day and its neighbours (for example,
+   the call doctor yesterday is *PostCall* today);
+3. staff requests for particular positions are added;
+4. the model is solved for each week, and the results are collected in one dataset.
+
+The schedules record who worked which shift, but not the peel-off order that was used on each
+day, nor when each consultant left. The results below are therefore a *retrospective
+application* of the model to real schedules, not an observed history. Registry data on actual
+departure times were requested from the hospital but never became available (@sec-intro).
+
+## Overview
+
+```{r}
+#| label: tbl-overview
+#| tbl-cap: "Overview of the dataset."
+n_weeks <- nrow(apap$weeks)
+tibble(
+  Item = c("Period", "Weeks solved", "Consultants", "Qualified for cardiac / charge / both / neither",
+           "Doctor-days in the order", "of which weekdays"),
+  Value = c(paste(format(min(apap$weeks$start), "%B %Y"), "to", format(max(apap$weeks$end), "%B %Y")),
+            n_weeks, nrow(apap$doctors),
+            paste(table(apap$doctors$roles)[c("Cardiac", "Charge", "Both", "Neither")], collapse = " / "),
+            format(nrow(apap$assignments), big.mark = ","), format(nrow(weekday), big.mark = ","))
+) |> knitr::kable()
+```
+
+@fig-days-worked shows how many days each consultant worked. About half worked between 1,000 and 1,150 days
+in the period. The consultants with fewer days worked part-time or were only in the group for part
+of the period. On weekends and holidays only the call and late-call consultants work.
+
+```{r}
+#| label: fig-days-worked
+#| fig-cap: "Days worked per consultant in the period, by day type. Consultants are ordered by average weekly points."
+#| fig-height: 3.5
+plot_days_worked(apap$assignments, apap$points)
+```
+
+# Model {#sec-model}
+
+The model is solved for one week at a time. Within a week, it assigns positions to the unassigned
+consultants each day, chooses the cardiac and charge doctors for each weekday, and keeps each
+consultant's points per day worked close to a target.
+
+## Sets and parameters
+
+| Symbol | Meaning |
+|---|---|
+| $D$ | consultants working in the week |
+| $T$, $T^w \subseteq T$ | days of the week, and weekdays |
+| $W_t \subseteq D$ | consultants in the peel-off order on day $t$ |
+| $U_t \subseteq W_t$ | unassigned consultants on day $t$ |
+| $K_t = \{1, \dots, \bar k_t\}$ | positions on day $t$ |
+| $\pi_t(d)$ | fixed position of consultant $d$ with a fixed shift on day $t$ |
+| $L_t$ | call and late-call consultants on day $t$ |
+| $A_t$ | consultants with administrative time on day $t$ |
+| $C$, $H$ | consultants qualified for cardiac and for charge |
+| $\kappa_t$ | position that the charge doctor must hold on day $t$ |
+| $n_d$ | weekdays worked by $d$ in the week |
+| $a = 8$ | points for an administrative day |
+| $E = \{1, 0.5, 0.2\}$ | tolerance bands around the target |
+
+## Decision variables
+
+* $x_{dtk} \in \{0,1\}$: consultant $d$ holds position $k$ on day $t$;
+* $c \ge 0$: the week's target, in points per day worked (free, chosen by the model);
+* $y^\varepsilon_d \in \{0,1\}$: consultant $d$ is within $\pm\varepsilon$ of the target;
+* $w_{dt} \in \{0,1\}$ for $d \in C$ and $z_{dt} \in \{0,1\}$ for $d \in H$: $d$ is the cardiac
+  or charge doctor on weekday $t$;
+* $M^w, M^z, M^{wz} \ge 0$: the largest number of cardiac, charge and combined roles held by any
+  one consultant in the week.
+
+A consultant's points for the week are
+$$
+S_d = \sum_{t \in T} \sum_{k \in K_t} k \, x_{dtk} + a \, \bigl|\{t : d \in A_t\}\bigr|.
+$$
+
+## Constraints
+
+Positions and fixed shifts:
+$$
+\begin{aligned}
+&\textstyle\sum_{d \in W_t} x_{dtk} \le 1 && \forall t, k \in K_t \quad &&\text{(one consultant per position)}\\
+&\textstyle\sum_{k \in K_t} x_{dtk} = 1 && \forall t \in T^w, d \in U_t &&\text{(every unassigned consultant gets a position)}\\
+&x_{d, t, \pi_t(d)} = 1 && \forall t, d \text{ with a fixed shift} &&\text{(fixed shifts and requests)}
+\end{aligned}
+$$
+
+Equity bands. With a big-$M$ constant $B$, for every $\varepsilon \in E$ and every $d$ with
+$n_d > 0$:
+$$
+c - \varepsilon - B(1 - y^\varepsilon_d) \;\le\; \frac{S_d}{n_d} \;\le\; c + \varepsilon + B(1 - y^\varepsilon_d).
+$$
+If $y^\varepsilon_d = 1$, consultant $d$ is within $\varepsilon$ points per day of the target;
+otherwise the constraint is relaxed. The bands are nested, so a consultant within 0.2 of the
+target can set all three indicators to 1.
+
+Roles, for every weekday $t$:
+$$
+\begin{aligned}
+&\textstyle\sum_{d \in L_t \cap C} w_{dt} = 1 &&\text{(one cardiac doctor, from the call team)}\\
+&\textstyle\sum_{d \in (L_t \cup U_t) \cap H} z_{dt} = 1 &&\text{(one charge doctor)}\\
+&x_{d, t, \kappa_t} \ge z_{dt} && \forall d \in U_t \cap H \quad \text{(an unassigned charge doctor holds the charge position)}\\
+&w_{dt} + z_{dt} \le 1 && \forall d \in C \cap H \quad \text{(not both roles on the same day)}\\
+&z_{dt} + z_{d,t+1} \le 1 && \forall d \in H,\ t, t+1 \in T^w \quad \text{(no charge on consecutive days)}\\
+&\textstyle\sum_{t} w_{dt} \le M^w,\ \sum_{t} z_{dt} \le M^z,\ \sum_{t} (w_{dt} + z_{dt}) \le M^{wz} && \text{(role spread)}
+\end{aligned}
+$$
+
+## Objective
+
+The model maximises, in order of priority,
+$$
+\max \;\; \underbrace{\sum_{\varepsilon \in E} \varepsilon \sum_{d \in D} y^\varepsilon_d}_{\text{equity}}
+\;-\; \beta \, \underbrace{(M^w + M^z + M^{wz})}_{\text{role spread}}
+\;+\; \gamma \, \underbrace{\sum_{t \in T^w} \sum_{d \in L_t \cap H} z_{dt}}_{\text{charge from call team}},
+$$
+with $\beta = 0.01$ and $\gamma = 0.001$. Equity dominates: a consultant within all three bands
+contributes $1 + 0.5 + 0.2 = 1.7$. The small weights break ties in favour of spreading the
+cardiac and charge roles, and then of giving the charge role to the call team, who stay late
+anyway.
+
+The target $c$ is itself a variable, so the model places it where as many consultants as
+possible fall within the bands, close to the median of points per day worked.
+
+## Solution
+
+A typical weekly instance has about 1,200 variables, almost all binary, and 400 constraints. It
+was solved with Gurobi [@gurobi] with a time limit of 60 seconds.
+`r sum(apap$weeks$optimal)` of the `r n_weeks` weeks were solved to proven optimality; the rest
+stopped at the time limit with a feasible solution.
+
+# Results {#sec-results}
+
+## Weekly objective
+
+@fig-objectives shows the weekly target and the three objective terms. The target stays between
+about 7 and 9 points per day worked. It dips in the first half of 2022 and rises afterwards.
+
+```{r}
+#| label: fig-objectives
+#| fig-cap: "Weekly target $c$ and objective terms, one point per week."
+#| fig-height: 4.5
+plot_objectives(apap$weeks)
+```
+
+**TODO:** Explain the 2022 dip and the 2023 rise (staffing changes? new consultants?).
+
+## Points per consultant
+
+@fig-weekly-points compares raw weekly points with points per day worked. Raw points vary a lot,
+mostly because consultants work different numbers of days in a week. Per day worked, the medians
+are almost equal across consultants and across role groups.
+
+```{r}
+#| label: fig-weekly-points
+#| fig-cap: "Weekly points per consultant (top) and points per day worked (bottom), coloured by the roles the consultant is qualified for."
+#| fig-height: 6.5
+plot_weekly_points(apap$points)
+```
+
+The long-run picture is in @fig-running-mean. After the first year, the cumulative points per day
+worked settle into a band between
+`r sprintf("%.1f", min(long_run$per_day))` and `r sprintf("%.1f", max(long_run$per_day))`.
+A few consultants stay consistently above the rest.
+
+```{r}
+#| label: fig-running-mean
+#| fig-cap: "Cumulative points per day worked for each consultant, from their 20th day worked."
+#| fig-height: 3.5
+plot_running_mean(apap$points)
+```
+
+The model does not carry points from one week to the next: every week is balanced on its own.
+The long-run band in @fig-running-mean is therefore the result of many fair weeks, and a
+consultant who is persistently a little above the target in each week is never compensated
+later.
+
+## Positions
+
+@fig-position-heatmap shows how often each consultant held each position on weekdays. Most
+consultants are spread across the whole range. The few exceptions have a narrow range of
+positions, and they are consultants who are rarely or never in the call team. They therefore never get
+the first position after a night on call, nor the last positions of the call team.
+
+```{r}
+#| label: fig-position-heatmap
+#| fig-cap: "Share of weekdays each consultant held each peel-off position."
+#| fig-height: 4.5
+plot_position_heatmap(apap$assignments, apap$points)
+```
+
+## Holidays
+
+Holiday shifts are fixed by the call schedule and are not decided by the model.
+@fig-holidays shows that they are unevenly spread: some consultants worked the same holiday
+many times.
+
+```{r}
+#| label: fig-holidays
+#| fig-cap: "Holiday shifts per consultant and holiday."
+#| fig-height: 3
+plot_holidays(apap$assignments, apap$points)
+```
+
+# Discussion {#sec-discussion}
+
+**Fairness within the week works.** Once the variation in days worked is taken into account, the
+weekly model gives the consultants almost the same points per day worked, whatever roles they are
+qualified for.
+
+**Weekly equity does not imply long-run equity.** This is the main finding. APAP gives closely
+balanced points per day worked within each week, but because successive weeks are optimised
+independently, small systematic differences persist (@fig-running-mean). In the terms of
+@sec-fairness, the weekly model is impartial but not necessarily unbiased. This result connects
+the two strands motivating APAP: distributive equity within an allocation period does not
+guarantee fairness across a sequence of periods. A sequence of locally fair allocations can
+still produce a persistently uneven trajectory when past burden does not affect future priority.
+Related distinctions arise in preference fulfilment on monthly duty rosters
+[@gross2019satisfaction] and repetitive scheduling [@ajtai1998fairness;
+@hermelin2025fairness].
+
+**Carrying a balance between weeks.** The natural extension is to let each consultant enter a
+week with a balance from the weeks before. With $P_d$ the points and $N_d$ the days worked by
+consultant $d$ before the current week, and $\tau$ a long-run target, the balance is
+$$
+b_d = P_d - \tau N_d .
+$$
+A consultant with a positive balance has carried more than their share and enters the week with
+a claim to earlier positions; the equity bands would then apply to cumulative instead of weekly
+points per day worked. This is the claim and priority reasoning of @young1994equity applied over
+time: past burden gives a claim, the claim gives priority, and the new allocation updates the
+burden.
+
+**Points are a proxy.** A position is not a time. Position 10 on a light day may mean going home
+earlier than position 5 on a heavy day. Linking positions to actual release times would need
+data on when consultants left, which is exactly the registry data that could not be obtained.
+With such data, the points could be calibrated to hours, and the model evaluated against what
+happened in practice.
+
+**Fixed shifts dominate.** The call schedule, including holidays, fixes a large part of each
+consultant's burden before the model runs. Holiday shifts in particular are unevenly shared
+(@fig-holidays). Joint optimisation of the call schedule and the peel-off order is left for
+future work.
+
+**TODO:** Limitations of retrospective evaluation (see @sec-data); stakeholder feedback;
+whether and how the model was used in practice.
+
+## Related application
+
+The same structure, a group that must stay until its part of a shared workload is done, appears
+in grant review panels, where a member may leave a meeting once all the proposals they review have
+been discussed. That application is being developed separately as a companion project.
+
+# Conclusion {#sec-conclusion}
+
+This paper formulates end-of-day anaesthesia relief as a repeated ordinal allocation problem.
+APAP assigns a complete peel-off order for each day, jointly over a weekly planning horizon,
+while respecting call-related positions, requests and clinical roles. It represents each
+position as points and balances points per day worked, so that earlier and later release
+positions are shared across consultants with different work patterns.
+
+The retrospective application to 285 weeks of call schedules shows that the model can produce
+closely balanced weekly allocations. It also exposes a limit of balancing each period on its
+own: small differences can persist when past burden does not shape future allocations. Fairness
+within a week is therefore distinct from fairness across the sequence of weeks. This empirical
+result brings the two motivating perspectives together: equity theory helps define a fair
+allocation within a period, while repeated-scheduling theory draws attention to how allocations
+accumulate over time.
+
+The model balances ordinal positions as a proxy for late-working burden; it does not measure
+actual departure times. Future work could use departure-time data to calibrate the burden
+associated with positions, and extend the model to carry each consultant's historical balance
+between weeks. That would allow earlier allocations to inform later priorities and directly
+address the gap between locally balanced weeks and long-run equity.
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
+
+# Appendix: code and reproducibility {.appendix}
+
+All code is in the project repository. From `code/`:
+
+```bash
+make all                       # schedules -> weekly instances -> solved weeks -> database
+python -m data.apap_export     # database -> CSV files in data/results/
+python -m data.build_docs_db   # CSV files -> compact SQLite database for the paper
+```
+
+The model is in `code/models/allocation_model.py`, the figures in `code/apap_figures.R`. The
+paper's R code reads `docs/data/apap.sqlite` and is rendered with `quarto render` from the project
+root; GitHub Actions installs the required R packages and runs the same render.

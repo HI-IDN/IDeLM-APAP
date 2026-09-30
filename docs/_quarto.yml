@@ -1,0 +1,22 @@
+project:
+  output-dir: _output
+
+bibliography: references.bib
+lang: en
+
+format:
+  haskoli-islands-html:
+    number-sections: true
+    code-fold: true
+    fig-cap-location: bottom
+
+execute:
+  freeze: false
+  echo: false
+  warning: false
+  message: false
+
+knitr:
+  opts_chunk:
+    fig.width: 7
+    dpi: 150
