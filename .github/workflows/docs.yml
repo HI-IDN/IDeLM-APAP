@@ -37,6 +37,8 @@ jobs:
           packages: |
             any::DBI
             any::RSQLite
+            any::knitr
+            any::rmarkdown
             any::dplyr
             any::tidyr
             any::ggplot2
