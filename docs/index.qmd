@@ -1,5 +1,5 @@
 ---
-title: "Who Goes Home First? Fair Peel-Off Orders for Anaesthetists"
+title: "Fair Peel-Off Orders for Anaesthetists"
 subtitle: "The Anesthetist's Peel Assignment Problem (APAP). Working draft"
 author: "Helga Ingimundardóttir & Tómas Philip Rúnarsson"
 date: today

@@ -1,5 +1,25 @@
 project:
+  type: website
   output-dir: _output
+
+# The HÍ logos are not part of the theme extension; img/hi/ is copied from HI-IDN/quarto-hi.
+website:
+  title: "Who Goes Home First?"
+  favicon: img/hi/favicon.svg
+  search: false
+  navbar:
+    pinned: true
+    logo: img/hi/hi_named_logo-en.svg
+    logo-alt: "University of Iceland"
+    right:
+      - icon: github
+        href: https://github.com/HI-IDN/IDeLM-APAP
+        aria-label: "Source on GitHub"
+  page-footer:
+    background: "#10099F"
+    foreground: "#ffffff"
+    left: "© 2026 Helga Ingimundardóttir & Tómas Philip Rúnarsson"
+    right: "Quarto template: [HI-IDN/quarto-hi](https://github.com/HI-IDN/quarto-hi)"
 
 bibliography: references.bib
 lang: en
@@ -9,6 +29,7 @@ format:
     number-sections: true
     code-fold: true
     fig-cap-location: bottom
+    theme: styles.scss
 
 execute:
   freeze: false
