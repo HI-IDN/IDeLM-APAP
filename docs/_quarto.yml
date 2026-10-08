@@ -12,6 +12,9 @@ website:
     logo: img/hi/hi_named_logo-en.svg
     logo-alt: "University of Iceland"
     right:
+      - icon: file-earmark-pdf
+        href: index.pdf
+        aria-label: "Download PDF"
       - icon: github
         href: https://github.com/HI-IDN/IDeLM-APAP
         aria-label: "Source on GitHub"
@@ -30,6 +33,14 @@ format:
     code-fold: true
     fig-cap-location: bottom
     theme: styles.scss
+  pdf:
+    documentclass: scrartcl
+    papersize: a4
+    pdf-engine: xelatex
+    number-sections: true
+    colorlinks: true
+    fig-format: png
+    fig-dpi: 150
 
 execute:
   freeze: false
