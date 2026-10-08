@@ -12,6 +12,9 @@ website:
     logo: img/hi/hi_named_logo-en.svg
     logo-alt: "University of Iceland"
     right:
+      - icon: file-earmark-pdf
+        href: index.pdf
+        aria-label: "Download PDF"
       - icon: github
         href: https://github.com/HI-IDN/IDeLM-APAP
         aria-label: "Source on GitHub"
