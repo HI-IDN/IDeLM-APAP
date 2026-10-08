@@ -30,6 +30,14 @@ format:
     code-fold: true
     fig-cap-location: bottom
     theme: styles.scss
+  pdf:
+    documentclass: scrartcl
+    papersize: a4
+    pdf-engine: xelatex
+    number-sections: true
+    colorlinks: true
+    fig-format: png
+    fig-dpi: 150
 
 execute:
   freeze: false

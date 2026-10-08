@@ -33,6 +33,10 @@ identified by their initials, as in the schedules they provided for research. **
 them with pseudonymous codes before publication (`python -m data.apap_export --pseudonymise`).
 :::
 
+::: {.content-visible when-format="html"}
+A [PDF version](index.pdf) of this document is also available.
+:::
+
 # Introduction {#sec-intro}
 
 Most shift work has a fixed end. Anaesthesia does not. An anaesthetist's day starts before 7 am
